@@ -1,0 +1,122 @@
+---
+title: "permutation test"
+author: "Garima Sood"
+date: "October 3, 2018"
+output: html_document
+---
+
+```{r}
+
+final_sel$PFIbucket <- as.factor(ifelse(final_sel$PFI.time<575,1,ifelse(final_sel$PFI.time<1450,2,3)))
+
+ntry <- 1000
+control <- trainControl(method='repeatedcv', 
+                          number=8, 
+                          repeats=5,
+                          search = 'grid')
+  
+newvar = rep(c(NA),times=nrow(final_sel))
+output <- data.frame(matrix(NA,ntry,1))
+colnames(output) <- 'cv_acc'
+
+for (k in 686:ntry){
+  print(k) 
+  set.seed(k)
+  j <- sample(1:nrow(final_sel), nrow(final_sel), replace = F)
+  newvar <- final_sel$PFIbucket[j]  
+  newdat <- data.frame(cbind("PFIbucket"=newvar, final_sel[,-which(colnames(final_sel) %in% c('PFIbucket','PFI.time'))]))
+  
+  tunegrid <- expand.grid(.mtry=1:5)
+  rf_perm <- train(PFIbucket ~.,
+                     data =newdat,
+                     method = 'rf',
+                     metric = 'Accuracy',
+                     tuneLength  = 15,
+                     tuneGrid = tunegrid,
+                     trControl = control)
+  
+  cv_acc <- rf_perm$result[rf_perm$bestTune[1,1],2]
+  output[k,1] <- cv_acc
+ 
+}
+
+
+
+hist(output[,1])
+
+```
+
+```{r}
+
+library(stats)
+
+mean_cv_acc <- mean(saved)
+sd_cv_acc <- sd(saved)
+pval_cv <- 1- pnorm (0.562, mean_cv_acc, sd_cv_acc)
+pval_cv
+
+hist(saved)
+```
+
+```{r}
+qplot(saved,
+      geom="histogram",
+      binwidth = 0.006,  
+      main = "Histogram of Accuracies", 
+      xlab = "Accuracy",  
+      fill=I("blue"))
+
+```
+
+```{r}
+qplot(TOP_20_time$PFI.time,
+      geom="histogram",
+      binwidth = 200,  
+      main = "Histogram of Accuracies", 
+      xlab = "Accuracy",  
+      fill=I("blue"))
+
+```
+
+```{r}
+qplot(sqrt(TOP_20_time$PFI.time),
+      geom="histogram",
+      binwidth = 1,  
+      main = "Histogram of Accuracies", 
+      xlab = "Accuracy",  
+      fill=I("blue"))
+
+```
+
+
+
+```{r}
+
+#progres <- output[1:384,]
+#progres2 <- output[385:678,1]
+
+#progres3 <- output[679:685,1]
+
+#progres3 <- output[786:686,1]
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+saved <- c(saved, progres3)
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

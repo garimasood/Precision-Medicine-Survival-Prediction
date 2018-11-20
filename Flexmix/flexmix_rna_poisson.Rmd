@@ -1,0 +1,536 @@
+---
+title: "Flexmix"
+date: "August 12, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library("flexmix")
+library(nnet)
+library(mlr) 
+
+```
+
+
+## Load test and train
+
+```{r load data}
+train_dat <- read.csv('C:/Users/garim/Documents/Capstone/Full data/Normalized/PCA/mol_PCA_train.csv')
+head(train_dat)
+
+test_dat <- read.csv('C:/Users/garim/Documents/Capstone/Full data/Normalized/PCA/mol_PCA_test.csv')
+head(test_dat)
+
+selectedrna <- read.csv('C:/Users/garim/Documents/Capstone/Full data/Normalized/RNA/select_rna.txt')
+rownames(selectedrna) <- selectedrna$participant
+
+```
+
+
+```{r}
+delcol = c(paste0('X',0:99),"OS","OS.time","DSS","DSS.time","DFI","DFI.time","PFI")
+
+selectedcol = colnames(selectedrna)
+trna <- merge(train_dat,selectedrna, by = 'participant')
+#trna <- trna[selectedcol]
+trna = trna[,-1]
+trna = trna[,-which(colnames(trna) %in% delcol)]
+
+#clustrna = cbind(trna, 'cluster'=clust)
+
+testrna <- merge(test_dat,selectedrna, by = 'participant')
+#testrna <- testrna[selectedcol]
+testrna = testrna[,-1]
+testrna = testrna[,-which(colnames(testrna) %in% delcol)]
+
+#clustestrna = cbind(testrna, 'cluster'=clusters(selected_model, newdata = test))
+```
+
+## Subsetting test and train data based on desired variables
+
+```{r subset data}
+train  = trna[,c(1,15:24)]
+test  = testrna[,c(1,15:24)]
+
+#train = train[,-which(names(train) %in% c('OS','OS.time', 'DSS', 'DSS.time', 'PFI'))]
+#test = test[,-which(names(test) %in% c('OS','OS.time', 'DSS', 'DSS.time', 'PFI'))]
+
+```
+
+
+## Fitting a step model on the train data
+
+```{r model}
+FittedBin <- initFlexmix(PFI.time ~ ., data = train, k=1:5,  nrep =20, model = list(FLXMRglm(family="poisson")))
+
+FittedBin
+```
+
+```{r model}
+FittedBin <- initFlexmix(PFI.time ~ ., data = train, k=1:5,  nrep =10, model =  list(FLXMRglm(family="gaussian")))
+
+FittedBin
+```
+
+
+
+
+```{r}
+predictedtrain = predict(FittedBin@models$`1`,train[,-which(names(train) %in% c('PFI.time'))])
+
+predicted = predict(FittedBin@models$`1`,test[,-which(names(test) %in% c('PFI.time'))])
+
+ypred2 = predictedtrain$Comp.1
+ytest2 = predicted$Comp.1
+sqrt(mean((train$PFI.time-ypred2)^2))
+sqrt(mean((test$PFI.time-ytest2)^2))
+```
+
+```{r}
+summary(refit(FittedBin@models$`1`))
+
+```
+
+
+```{r}
+predictedtrain = predict(FittedBin@models$`2`,train[,-which(names(test) %in% c('OS','OS.time', 'DSS', 'DSS.time', 'PFI','PFI.time'))])
+
+predicted = predict(FittedBin@models$`2`,test[,-which(names(test) %in% c('OS','OS.time', 'DSS', 'DSS.time', 'PFI','PFI.time'))])
+table(clusters(FittedBin@models$`2`,train))
+ypred2 =  ifelse(clusters(FittedBin@models$`2`,train)==1,predictedtrain$Comp.1,predictedtrain$Comp.2)
+ytest2 = ifelse(clusters(FittedBin@models$`2`,test)==1,predicted$Comp.1,predicted$Comp.2)
+sqrt(mean((train$PFI.time-ypred2)^2))
+sqrt(mean((test$PFI.time-ytest2)^2))
+
+```
+
+```{r}
+data1 <- cbind(test[,-which(names(test) %in% c('PFI.time'))], 'PFI.time' = as.integer(predicted$Comp.1))
+data2 <- cbind(test[,-which(names(test) %in% c('PFI.time'))], 'PFI.time' = as.integer(predicted$Comp.2))
+clust1 <- clusters(FittedBin@models$`2`, newdata = data1)
+clust2 <- clusters(FittedBin@models$`2`, newdata = data2)
+cbind(clust1,clust2,'actual'=clusters(FittedBin@models$`2`, newdata = test))
+
+```
+
+
+```{r}
+predictedtrain = predict(FittedBin@models$`3`,train[,-which(names(test) %in% c('OS','OS.time', 'DSS', 'DSS.time', 'PFI','PFI.time'))])
+
+predicted = predict(FittedBin@models$`3`,test[,-which(names(test) %in% c('OS','OS.time', 'DSS', 'DSS.time', 'PFI','PFI.time'))])
+table(clusters(FittedBin@models$`3`,train))
+ypred2 =  ifelse(clusters(FittedBin@models$`3`,train)==1,predictedtrain$Comp.1,ifelse(clusters(FittedBin@models$`3`,train)==2,predictedtrain$Comp.2,predictedtrain$Comp.3))
+ytest2 = ifelse(clusters(FittedBin@models$`3`,test)==1,predicted$Comp.1,ifelse(clusters(FittedBin@models$`3`,test)==2,
+                 predicted$Comp.2,predicted$Comp.3))
+sqrt(mean((train$PFI.time-ypred2)^2))
+sqrt(mean((test$PFI.time-ytest2)^2))
+```
+```{r}
+summary(refit(FittedBin@models$`3`))
+
+```
+
+```{r}
+write.csv(cbind(data.frame(train_dat$participant), predict(FittedBin@models$`3`, train)$Comp.1,predict(FittedBin@models$`3`, train)$Comp.2,predict(FittedBin@models$`3`, train)$Comp.3, clusters(FittedBin@models$`3`,train)), 'cluster_output.csv')
+
+```
+
+
+
+```{r}
+data1 <- cbind(test[,-which(names(test) %in% c('PFI.time'))], 'PFI.time' = as.integer(predicted$Comp.1))
+data2 <- cbind(test[,-which(names(test) %in% c('PFI.time'))], 'PFI.time' = as.integer(predicted$Comp.2))
+data3 <- cbind(test[,-which(names(test) %in% c('PFI.time'))], 'PFI.time' = as.integer(predicted$Comp.3))
+clust1 <- clusters(FittedBin@models$`3`, newdata = data1)
+clust2 <- clusters(FittedBin@models$`3`, newdata = data2)
+clust3 <- clusters(FittedBin@models$`3`, newdata = data3)
+cbind(clust1,clust2,clust3,'actual'=clusters(FittedBin@models$`3`, newdata = test))
+
+```
+
+
+```{r}
+predictedtrain = predict(FittedBin@models$`4`,train[,-which(names(test) %in% c('OS','OS.time', 'DSS', 'DSS.time', 'PFI','PFI.time'))])
+
+predicted = predict(FittedBin@models$`4`,test[,-which(names(test) %in% c('OS','OS.time', 'DSS', 'DSS.time', 'PFI','PFI.time'))])
+
+ypred2 =  ifelse(clusters(FittedBin@models$`4`,train)==1,predictedtrain$Comp.1,ifelse(clusters(FittedBin@models$`4`,train)==2,predictedtrain$Comp.2,ifelse(clusters(FittedBin@models$`4`,train)==3,predictedtrain$Comp.3,predictedtrain$Comp.4)))
+
+ytest2 = ifelse(clusters(FittedBin@models$`4`,test)==1,predicted$Comp.1,ifelse(clusters(FittedBin@models$`4`,test)==2,predicted$Comp.2,ifelse(clusters(FittedBin@models$`4`,test)==3,predicted$Comp.3,predicted$Comp.4)))
+
+sqrt(mean((test$PFI.time-ytest2)^2))
+
+sqrt(mean((train$PFI.time-ypred2)^2))
+
+
+
+```
+
+```{r}
+predictedtrain = predict(FittedBin@models$`5`,train[,-which(names(test) %in% c('OS','OS.time', 'DSS', 'DSS.time', 'PFI','PFI.time'))])
+
+predicted = predict(FittedBin@models$`5`,test[,-which(names(test) %in% c('OS','OS.time', 'DSS', 'DSS.time', 'PFI','PFI.time'))])
+
+ypred2 =  ifelse(clusters(FittedBin@models$`5`,train)==1,predictedtrain$Comp.1,ifelse(clusters(FittedBin@models$`5`,train)==2,predictedtrain$Comp.2,ifelse(clusters(FittedBin@models$`5`,train)==3,predictedtrain$Comp.3,ifelse(clusters(FittedBin@models$`5`,train)==4,predictedtrain$Comp.4,predictedtrain$Comp.5))))
+
+ytest2 = ifelse(clusters(FittedBin@models$`5`,test)==1,predicted$Comp.1,ifelse(clusters(FittedBin@models$`5`,test)==2,predicted$Comp.2,ifelse(clusters(FittedBin@models$`5`,test)==3,predicted$Comp.3,ifelse(clusters(FittedBin@models$`5`,test)==4,predicted$Comp.4,predicted$Comp.5))))
+
+table(clusters(FittedBin@models$`5`,train))
+sqrt(mean((test$PFI.time-ytest2)^2))
+
+sqrt(mean((train$PFI.time-ypred2)^2))
+
+
+
+```
+
+
+
+## Plots of model fit
+
+```{r plots}
+plot(train$ENSG00000171401, train$PFI.time, col = c("red","blue","green", "yellow", "black")[clusters(FittedBin@models$`3`,train)],pch = 16,ylab = "PFI.time")
+
+library("ggplot2")
+qplot(train$PFI.time, ypred2,xlab="Actual",ylab="Predicted") + geom_abline()
+qplot(test$PFI.time, ytest2,xlab="Actual",ylab="Predicted") + geom_abline()
+
+qplot(ypred2, ypred2 - train$PFI.time, xlab="Actual Y",ylab="Residual")
+qplot(ytest2, ytest2 - test$PFI.time, xlab="Actual Y",ylab="Residual")
+
+hist(train$DSS.time[clust_train==1], col = hcl(0, 50, 80), main = "",xlab = "", freq = FALSE, ylim = c(0,0.001))
+hist(train$DSS.time[clust_train==2], col = hcl(240, 50, 80), main = "",xlab = "", freq = FALSE, ylim = c(0,0.001))
+hist(train$DSS.time[clust_train==3], col = hcl(135, 50, 80), main = "",xlab = "", freq = FALSE, ylim = c(0,0.001))
+
+ys = seq(0, 3500, by = 0.1)
+lines(ys, dnorm(ys, mean = mean(train$DSS.time[clust_train==1]), sd = sd(train$DSS.time[clust_train==1])), col = hcl(0, 80, 50), lwd = 2)
+lines(ys, dnorm(ys, mean = mean(train$DSS.time[clust_train==2]), sd = sd(train$DSS.time[clust_train==2])), col = hcl(240, 80, 50), lwd = 2)
+lines(ys, dnorm(ys, mean = mean(train$DSS.time[clust_train==3]), sd = sd(train$DSS.time[clust_train==3])), col = hcl(135, 80, 50), lwd = 2)
+
+```
+
+# Taking the selected model and building cluster prediction model:
+```{r}
+selected_model = FittedBin@models$`3`
+
+clust = clusters(selected_model)
+
+```
+# Random forest model for cluster prediction
+
+```{r}
+library(rpart)
+library(rpart.plot)
+```
+
+```{r}
+
+rf_class = rpart(as.factor(clust)~.,data = train[,-which(colnames(train) %in% c('PFI.time'))])
+printcp(rf_class)
+rpart.plot(rf_class)
+
+```
+
+#testing accuracy
+
+```{r}
+t_pred = predict(rf_class,train,type="class")
+table(t_pred, clust)
+
+test_pred = predict(rf_class,test,type="class")
+table(test_pred, clusters(selected_model, newdata = test))
+
+sum(test_pred == clusters(selected_model, newdata = test))/length(test_pred)
+
+printcp(rf_class)
+```
+
+```{r}
+library(randomForest)
+rf_class1 = randomForest(as.factor(clust==1)~.,cbind(train[,-which(colnames(train) %in% c('PFI.time'))]), ntree=200)
+rf_class2 = randomForest(as.factor(clust==2)~.,cbind(train[,-which(colnames(train) %in% c('PFI.time'))]), ntree=200)
+rf_class3 = randomForest(as.factor(clust==3)~.,cbind(train[,-which(colnames(train) %in% c('PFI.time'))]), ntree=200)
+
+
+
+#plot(rf_class)
+```
+
+```{r}
+rf_class = randomForest(as.factor(clust)~.,cbind(train[,-which(colnames(train) %in% c('PFI.time'))]), ntree=200)
+t_pred = predict(rf_class,train,type="class")
+table(t_pred, clust)
+
+#cbind('class1' = predict(rf_class1,test,type="prob")[,2],
+      'class2' = predict(rf_class2,test,type="prob")[,2],
+      'class3' = predict(rf_class3,test,type="prob")[,2],
+      'predicted' = t_pred,
+      'actual' = clusters(selected_model,test))
+
+(test_rf = predict(rf_class,test,type="class"))
+table(test_rf, clusters(selected_model, newdata = test))
+
+sum(test_rf == clusters(selected_model, newdata = test))/length(test_rf)
+sum(t_pred == clusters(selected_model, newdata = train))/length(t_pred)
+
+```
+
+```{r}
+importance(rf_class)
+```
+
+```{r}
+
+mylogit <- multinom(as.factor(clust==1) ~ ., data = cbind(train[,-which(colnames(train) %in% c('PFI.time'))]))
+glm_pred1 = predict(mylogit,test,type="prob")
+
+mylogit <- multinom(as.factor(clust==2) ~ ., data = cbind(train[,-which(colnames(train) %in% c('PFI.time'))]))
+glm_pred2 = predict(mylogit,test,type="prob")
+
+mylogit <- multinom(as.factor(clust==3) ~ ., data = cbind(train[,-which(colnames(train) %in% c('PFI.time'))]))
+glm_pred3 = predict(mylogit,test,type="prob")
+
+mylogit <- multinom(as.factor(clust) ~ ., data = cbind(train[,-which(colnames(train) %in% c('PFI.time'))]))
+glm_pred = predict(mylogit,test,type="class")
+table(clusters(selected_model, newdata = test), glm_pred)
+sum(clusters(selected_model, newdata = test)== glm_pred)/length(glm_pred)
+
+cbind(glm_pred1,glm_pred2,glm_pred3,"resp" = glm_pred, "actual"=clusters(selected_model, newdata = test))
+#table(glm_pred,clusters(selected_model, newdata = test))
+
+#sum(glm_pred==clusters(selected_model, newdata = test))/length(glm_pred)
+```
+Fitting XGBoost to find clusters
+
+
+
+```{r}
+library(xgboost)
+```
+
+
+```{r}
+train_dat = as.data.frame(cbind(train[,-which(colnames(train) %in% c('PFI.time'))], "cluster" = as.factor(clusters(selected_model,train))))
+
+test_dat = as.data.frame(cbind(test[,-which(colnames(train) %in% c('PFI.time'))], "cluster" = as.factor(clusters(selected_model,test))))
+```
+
+```{r}
+trainTask <- makeClassifTask(data = train_dat,target = "cluster")
+
+testTask <- makeClassifTask(data = test_dat, target = "cluster")
+```
+
+
+```{r}
+set.seed(1)
+# Create an xgboost learner that is classification based and outputs
+# labels (as opposed to probabilities)
+xgb_learner <- makeLearner(
+  "classif.xgboost",
+  predict.type = "prob",
+  par.vals = list(
+    objective = "multi:softprob",
+    eval_metric = "merror",
+    nrounds = 200
+  )
+)
+
+# Create a model
+xgb_model <- train(xgb_learner, task = trainTask)
+
+
+```
+
+```{r}
+result <- predict(xgb_model, testTask)
+table(result$data$truth,result$data$response)
+sum(result$data$truth==result$data$response)/length(result$data$response)
+```
+#Hyper-parameter Tuning
+
+```{r}
+# To see all the parameters of the xgboost classifier
+getParamSet("classif.xgboost")
+
+```
+
+```{r}
+xgb_params <- makeParamSet(
+  # The number of trees in the model (each one built sequentially)
+  makeIntegerParam("nrounds", lower = 10, upper = 2000),
+  # number of splits in each tree
+  makeIntegerParam("max_depth", lower = 1, upper = 20),
+  # "shrinkage" - prevents overfitting
+  makeNumericParam("eta", lower = 0, upper = .5),
+  # L2 regularization - prevents overfitting
+  makeNumericParam("lambda", lower = -0.0001, upper = 0, trafo = function(x) 10^x)
+)
+
+control <- makeTuneControlRandom(maxit = 10)
+
+# Create a description of the resampling plan
+resample_desc <- makeResampleDesc("CV", iters = 5)
+
+```
+
+
+```{r}
+tuned_params <- tuneParams(
+  learner = xgb_learner,
+  task = trainTask,
+  resampling = resample_desc,
+  par.set = xgb_params,
+  control = control
+)
+
+```
+
+
+
+```{r}
+# Create a new model using tuned hyperparameters
+xgb_tuned_learner <- setHyperPars(
+  learner = xgb_learner,
+  par.vals = tuned_params$x
+)
+
+# Re-train parameters using tuned hyperparameters (and full training set)
+xgb_model <- train(xgb_tuned_learner, trainTask)
+
+# Make a new prediction
+result <- predict(xgb_model, testTask)
+table(result$data$truth,result$data$response)
+sum(result$data$truth==result$data$response)/length(result$data$truth)
+```
+
+
+
+```{r}
+library(class)
+train_clus = cbind(train[,-which(colnames(train) %in% c('PFI.time'))], 'cluster' = (clusters(selected_model,train)==1)*1)
+test_clus = cbind(test[,-which(colnames(test) %in% c('PFI.time'))], 'cluster' = (clusters(selected_model,test)==1)*1)
+
+test_pred_knn1 <- knn(train = train_clus, test = test_clus,cl= train_clus$cluster, k = 25,  prob = TRUE)
+
+#install.packages("gmodels")
+require("gmodels")
+library("gmodels")
+
+CrossTable(x = test_clus$cluster, y = test_pred_knn1,
+prop.chisq = FALSE)
+sum(test_pred_knn1 == (clusters(selected_model,test)==1)*1)/length(test_pred_knn1)
+```
+
+
+```{r}
+library(class)
+train_clus = cbind(train[,-which(colnames(train) %in% c('PFI.time'))], 'cluster' = (clusters(selected_model,train)==2)*1)
+test_clus = cbind(test[,-which(colnames(test) %in% c('PFI.time'))], 'cluster' = (clusters(selected_model,test)==2)*1)
+
+test_pred_knn2 <- knn(train = train_clus, test = test_clus,cl= train_clus$cluster, k = 25,  prob = TRUE)
+
+#install.packages("gmodels")
+require("gmodels")
+library("gmodels")
+
+CrossTable(x = test_clus$cluster, y = test_pred_knn2,
+prop.chisq = FALSE)
+sum(test_pred_knn2 == (clusters(selected_model,test)==2)*1)/length(test_pred_knn2)
+```
+
+
+```{r}
+library(class)
+train_clus = cbind(train[,-which(colnames(train) %in% c('PFI.time'))], 'cluster' = as.factor((clusters(selected_model,train)==3)*1))
+test_clus = cbind(test[,-which(colnames(test) %in% c('PFI.time'))], 'cluster' = (clusters(selected_model,test)==3)*1)
+
+test_pred_knn3 <- knn(train = train_clus, test = test_clus,cl= train_clus$cluster, k = 25,  prob = TRUE)
+
+#install.packages("gmodels")
+require("gmodels")
+library("gmodels")
+
+CrossTable(x = test_clus$cluster, y = test_pred_knn3,
+prop.chisq = FALSE)
+sum(test_pred_knn3 == (clusters(selected_model,test)==3)*1)/length(test_pred_knn3)
+
+train_clus = cbind(train[,-which(colnames(train) %in% c('PFI.time'))], 'cluster' = clusters(selected_model,train))
+test_clus = cbind(test[,-which(colnames(test) %in% c('PFI.time'))], 'cluster' = clusters(selected_model,test))
+test_pred_knn <- knn(train = train_clus, test = test_clus,cl= train_clus$cluster, k = 25,  prob = TRUE)
+CrossTable(x = test_clus$cluster, y = test_pred_knn,
+prop.chisq = FALSE)
+sum(test_pred_knn == clusters(selected_model,test))/length(test_pred_knn)
+```
+
+```{r}
+cbind(test_pred_knn1=attributes(test_pred_knn1)$prob, 
+      test_pred_knn2=attributes(test_pred_knn2)$prob, 
+      test_pred_knn3=attributes(test_pred_knn3)$prob,
+      'pred'= test_pred_knn,
+      "actual"=clusters(selected_model,test)) 
+
+
+```
+
+
+
+```{r}
+ens_clus = cbind('tree'= test_pred,'knn' = test_pred_knn, 'rf' = test_rf) #'actual' = test_clus$cluster#
+
+final_clus = apply(ens_clus, 1, function(x) as.factor(names(sort(table(x),decreasing=TRUE))[1]))
+sum(final_clus==test_clus$cluster)/length(final_clus)
+```
+
+
+
+# Miscellaneous
+
+```{r}
+ytest = ifelse(final_clus==1,predict(selected_model, newdata=test[,-which(colnames(train) %in% c('PFI.time'))])$Comp.1, predict(selected_model,newdata=test[,-which(colnames(train) %in% c('PFI.time'))])$Comp.2)
+
+#       +result$data$prob.4*predicted$Comp.8+
+#        result$data$prob.5*predicted$Comp.5+result$data$prob.6*predicted$Comp.8+
+#        result$data$prob.7*predicted$Comp.7+result$data$prob.8*predicted$Comp.8
+  
+
+sqrt(mean((test$PFI.time-ytest)^2))
+#sqrt(mean((test$PFI.time-ytest2)^2))
+plot(test$PFI.time,test$PFI.time- ytest)
+plot(test$PFI.time, ytest)
+
+aggregate(cbind(ytest, 'PFI.time'=test$PFI.time, 'clust'=clusters(FittedBin@models$`2`,test)), by=list(clusters(FittedBin@models$`2`,test)), mean )
+
+#aggregate(cbind(ypred2, 'PFI.time'=test$PFI.time, 'clust'=clusters(FittedBin@models$`3`,test)), by=list(clusters(FittedBin@models$`3`,test)), mean )
+
+```
+
+```{r}
+train_clus = cbind(train, "cluster" = clusters(FittedBin@models$`3`,train))
+
+centers = aggregate(.~cluster,train_clus, FUN = mean)
+centers = centers[,2:21]
+```
+
+
+```{r}
+distc = data.frame(matrix(NA, nrow(train), 1))
+a = list()
+for (i in 1:nrow(train)){
+  for (j in 1:3){
+    a[j] <- as.numeric(dist(rbind(train[i,1:20], centers[j,]),method = "euclidean"))
+  }
+    
+   distc[i,1] <- which.min(unlist(a))
+}
+
+colnames(distc) = c('cluster')
+head(distc)
+```
+
+
+
+```{r}
+table(distc$cluster, clusters(FittedBin@models$`3`,train))
+```
+

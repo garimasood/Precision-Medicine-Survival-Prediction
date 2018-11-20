@@ -1,0 +1,1107 @@
+---
+title: "Report_implementation"
+author: "Samia Feroze"
+date: "10/4/2018"
+output: html_document
+---
+
+#Running regression with PFI time
+
+```{r}
+library(classInt)
+#install.packages("plotmo")
+library(plotmo)
+TOP_20<-read.csv("C:/Users/garim/Documents/Capstone/Codes/Flexmix/topvar.csv")
+```
+
+
+```{r}
+TOP_20[,c(4,13)] <- lapply(TOP_20[,c(4,13)], as.factor)
+classIntervals(TOP_20$PFI.time, 2, style = 'quantile')
+TOP_20$PFI_2_bucket <- as.factor(ifelse(TOP_20$PFI.time<776,1,2))
+write.csv(TOP_20 ,"top_20.csv")
+TOP_20_time<-TOP_20[-c(2,27)]
+```
+
+```{r}
+#smp_size<-floor(0.75*nrow(TOP_20))
+#set.seed(123)
+#train_ind <- sample(seq_len(nrow(TOP_20)), size = smp_size)
+#train <- TOP_20[train_ind , ]
+#test<- TOP_20[-train_ind, ] 
+```
+
+```{r}
+library(leaps)
+
+TOP_20_time$PFI.time.sqrt<-sqrt(TOP_20_time$PFI.time)
+
+Linearregression<-lm(PFI.time.sqrt~., data=TOP_20_time[-c(1)])
+summary(Linearregression)
+plot(Linearregression$residuals)
+plot(TOP_20_time$PFI.time, Linearregression$fitted.values)
+```
+
+#Running RF with PFI time
+
+```{r}
+library(caret)
+control <- trainControl(method='repeatedcv', 
+                          number=15, 
+                          repeats=10,
+                          search = 'grid')
+  
+  
+  tunegrid <- expand.grid(.mtry=1:5)
+  rf_fit <- train(PFI.time ~.,
+                     data =TOP_20_time,
+                     method = 'rf',
+                     tuneLength  = 15,
+                     tuneGrid = tunegrid,
+                     trControl = control, importance = TRUE)
+  
+  #print(rf_fit)
+  #plot(rf_fit)
+  
+  plotres()
+
+```
+
+#Running PFI time with SVR
+
+```{r}
+library(caret)
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+grid_poly <- expand.grid(scale = c(0.001,0.0015,0.002,0.003,0.005),
+                           C = c(0.5,0.8,0.9,1,1.2,1.4,1.6,2,2.5), degree=1:6)
+
+svm_poly <- train(PFI.time ~.
+                    ,data = TOP_20_time[-c(1,26)], method = "svmPoly",
+                    trControl=trctrl,
+                    preProcess = c("center", "scale"),
+                    tuneGrid = grid_poly,
+                    tuneLength = 10)
+
+varImp(svm_poly)
+plotres(svm_poly)
+svm_poly$results
+plot(svm_poly)
+plot(svm_poly$results[,c("Rsquared")], type="l")
+varImp(svm_poly)
+```
+
+#Running cross validated linear regression with PFI time
+
+```{r}
+library(DAAG)
+cvResults <- CVlm(data=TOP_20_time[-c(25)], m=5, form.lm = formula(PFI.time~ .))
+plot(cvResults$cvpred,TOP_20_time$PFI.time )
+residuals = sum(cvResults$cvpred-TOP_20_time$PFI.time)
+
+# performs the CV
+```
+
+#Running regression with PFI time square rooted
+
+```{r}
+library(DAAG)
+cvResults_sqrt <- CVlm(data=TOP_20_time[-c(1,2)], m=5, form.lm = formula(PFI.time.sqrt ~ .))
+plot(cvResults$cvpred,TOP_20_time$PFI.time.sqrt )
+plotres(cvResults_sqrt)
+
+```
+
+
+
+```{r}
+library(caret)
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+grid_poly <- expand.grid(scale = c(0.001,0.0015,0.002,0.003,0.005),
+                           C = c(0.5,0.8,0.9,1,1.2,1.4,1.6,2,2.5), degree=1:6)
+
+svm_poly <- train(PFI.time.sqrt ~.
+                    ,data = TOP_20_time[-c(1)], method = "svmPoly",
+                    trControl=trctrl,
+                    preProcess = c("center", "scale"),
+                    tuneGrid = grid_poly,
+                    tuneLength = 10)
+
+varImp(svm_poly)
+
+svm_poly$results
+plot(svm_poly)
+plot(svm_poly$results[,c("Rsquared")], type="l")
+varImp(svm_poly)
+
+```
+
+
+#Running rf fit with pfi time 
+```{r}
+library(caret)
+control <- trainControl(method='repeatedcv', 
+                          number=15, 
+                          repeats=10,
+                          search = 'grid', savePredictions = T)
+  
+  tunegrid <- expand.grid(.mtry=1:5)
+  rf_fit <- train (PFI.time.sqrt ~.,
+                     data =TOP_20_time[-c(1,2)],
+                     method = 'rf',
+                     tuneLength  = 15,
+                     tuneGrid = tunegrid,
+                     trControl = control, importance = TRUE)
+  
+  #print(rf_fit)
+  #plot(rf_fit)
+  res<-rf_fit$pred
+  
+  rf_fit
+  plot(rf_fit)
+  plotres(rf_fit)
+```
+
+
+#Fitting rf model with 3 classes and only genes
+
+```{r}
+#colnames(train)
+train_genes<-TOP_20[-c(1,3,4,13:27)]
+test_genes<-TOP_20[-c(1,3,4,13:27)]
+
+control <- trainControl(method='repeatedcv', 
+                          number=15, 
+                          repeats=10,
+                          search = 'grid')
+  
+  
+  tunegrid <- expand.grid(.mtry=1:5)
+  rf_fit <- train(as.factor(PFIbucket) ~.,
+                     data =train_genes,
+                     method = 'rf',
+                     metric = 'Accuracy',
+                     tuneLength  = 15,
+                     tuneGrid = tunegrid,
+                     trControl = control, importance = TRUE)
+  
+  #print(rf_fit)
+  #plot(rf_fit)
+  
+  
+  rf_fit
+  plot(rf_fit)
+```
+
+#Fitting rf model with 3 classes only drugs
+
+```{r}
+train_drugs<-TOP_20[c(2,14:26)]
+test_drugs<-TOP_20[c(2,14:26)]
+
+control <- trainControl(method='repeatedcv', 
+                          number=15, 
+                          repeats=10,
+                          search = 'grid')
+  
+  
+  tunegrid <- expand.grid(.mtry=1:5)
+  rf_fit_drugs <- train(as.factor(PFIbucket) ~.,
+                     data =train_drugs,
+                     method = 'rf',
+                     metric = 'Accuracy',
+                     tuneLength  = 15,
+                     tuneGrid = tunegrid,
+                     trControl = control, importance = TRUE)
+  
+  #print(rf_fit)
+  #plot(rf_fit)
+  
+  
+  rf_fit_drugs
+  plot(rf_fit_drugs)
+```
+```{r}
+library(caret)
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+grid_poly <- expand.grid(scale = c(0.001,0.0015,0.002,0.003,0.005),
+                           C = c(0.5,0.8,0.9,1,1.2,1.4,1.6,2,2.5), degree=1:6)
+
+svm_poly <- train(PFI.time.sqrt ~.
+                    ,data = TOP_20_time[-c(1)], method = "svmPoly",
+                    trControl=trctrl,
+                    preProcess = c("center", "scale"),
+                    tuneGrid = grid_poly,
+                    tuneLength = 10)
+
+varImp(svm_poly)
+
+svm_poly$results
+plot(svm_poly)
+plot(svm_poly$results[,c("Rsquared")], type="l")
+varImp(svm_poly)
+```
+
+
+
+#Fitting rf model with 3 classes and only genes
+
+```{r}
+#colnames(train)
+train_genes<-TOP_20[-c(1,3,4,13:27)]
+test_genes<-TOP_20[-c(1,3,4,13:27)]
+
+control <- trainControl(method='repeatedcv', 
+                          number=15, 
+                          repeats=10,
+                          search = 'grid')
+  
+  
+  tunegrid <- expand.grid(.mtry=1:5)
+  rf_fit <- train(as.factor(PFIbucket) ~.,
+                     data =train_genes,
+                     method = 'rf',
+                     metric = 'Accuracy',
+                     tuneLength  = 15,
+                     tuneGrid = tunegrid,
+                     trControl = control, importance = TRUE)
+  
+  #print(rf_fit)
+  #plot(rf_fit)
+  
+  
+  rf_fit
+  plot(rf_fit)
+```
+
+#Fitting across 2 classes
+
+```{r}
+
+TOP_20_2c<-TOP_20[-c(1,2,3)]
+colnames(TOP_20)
+
+```
+
+
+#fitting across 2 classes and only genes
+
+```{r}
+#colnames(train)
+train_genes<-TOP_20_2c[c(2:9,24)]
+test_genes<-TOP_20_2c[c(2:9,24)]
+
+control <- trainControl(method='repeatedcv', 
+                          number=15, 
+                          repeats=10,
+                          search = 'grid')
+  
+  
+  tunegrid <- expand.grid(.mtry=1:5)
+  rf_fit <- train(as.factor(PFI_2_bucket) ~.,
+                     data =train_genes,
+                     method = 'rf',
+                     metric = 'Accuracy',
+                     tuneLength  = 15,
+                     tuneGrid = tunegrid,
+                     trControl = control, importance = TRUE)
+  
+  #print(rf_fit)
+  #plot(rf_fit)
+  
+  
+  rf_fit
+  plot(rf_fit)
+```
+
+
+
+#Fitting across 2 classes and only drugs
+
+```{r}
+train_drugs<-TOP_20_2c[c(11:24)]
+test_drugs<-TOP_20_2c [c(11:24)]
+
+control <- trainControl(method='repeatedcv', 
+                          number=15, 
+                          repeats=10,
+                          search = 'grid')
+  
+  
+  tunegrid <- expand.grid(.mtry=1:5)
+  rf_fit_drugs <- train(as.factor(PFI_2_bucket) ~.,
+                     data =train_drugs,
+                     method = 'rf',
+                     metric = 'Accuracy',
+                     tuneLength  = 15,
+                     tuneGrid = tunegrid,
+                     trControl = control, importance = TRUE)
+  
+  #print(rf_fit)
+  #plot(rf_fit)
+  
+  
+  rf_fit_drugs
+  plot(rf_fit_drugs)
+```
+
+
+```{r}
+library(caret)
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+grid_poly <- expand.grid(scale = c(0.001,0.0015,0.002,0.003,0.005),
+                           C = c(0.5,0.8,0.9,1,1.2,1.4,1.6,2,2.5), degree=1:6)
+
+svm_poly <- train(PFI_2_bucket ~.
+                    ,data = train_drugs, method = "svmPoly",
+                    trControl=trctrl,
+                    preProcess = c("center", "scale"),
+                    tuneGrid = grid_poly,
+                    tuneLength = 10)
+
+varImp(svm_poly)
+
+svm_poly$results
+plot(svm_poly)
+plot(svm_poly$results[,c("Rsquared")], type="l")
+varImp(svm_poly)
+```
+
+#Fitting logistic regression
+
+
+```{r}
+# Fit the model
+model_log <- nnet::multinom(PFI_2_bucket ~., data = TOP_20_2c)
+# Summarize the model
+summary(model_log)
+# Make predictions
+```
+
+#Fitting logistic with lasso
+
+```{r}
+library(glmnet)
+X<- data.matrix(TOP_20_2c[-c(24)])
+Y<- data.matrix(TOP_20_2c[c(24)])
+glmmod <- glmnet(X, y=as.factor(Y), alpha=1, family="binomial")
+plot(glmmod, xvar="lambda")
+cv.out=cv.glmnet(x=X,y=Y,alpha=1)
+plot(cv.out)
+
+(bestlam =cv.out$lambda.min)
+s="bestlam"
+lass.train=predict(glmmod, s=bestlam, newx=X, "class")
+#lasso.pred=predict(glmmod,s=bestlam,
+                   #newx=data.matrix(test_2c[-c(24)]), "class")
+
+print_glmnet_coefs <- function(cv.out, s="bestlam") {
+    ind <- which(coef(cv.out, s=s) != 0.0000)
+    df <- data.frame(
+        feature=rownames(coef(cv.out, s=s))[ind],
+        coeficient=coef(cv.out, s=s)[ind]
+    )
+    kable(df)
+}
+plot(cv.out$cvm)
+confusionMatrix(TOP_20_2c$PFI_2_bucket, as.factor(lass.train))
+print_glmnet_coefs(cv.out,s)
+
+
+train = read.csv("train.csv", stringsAsFactors=FALSE)
+
+train$Age[is.na(train$Age)] = 29.70
+
+formula = PFI_2_bucket ~ .
+
+# use glm() no cross validation
+modelLog = glm(formula, data=TOP_20_2c, family=binomial)
+PredTrain = predict(modelLog, newdata=train, type="response") 
+table(train$Survived, PredTrain > 0.5)
+
+library(caret)
+
+# use caret's glm with cross validation
+train_control = trainControl(method="cv", number=5)
+
+modelLog = train (formula, data = TOP_20_3c, method = "glm", family = multinom, trControl = train_control)
+
+PredTrain = predict(modelLog, newdata=TOP_20_2c, type="raw") 
+
+table(TOP_20_2c$PFI_2_bucket, PredTrain)
+
+confusionMatrix(modelLog)
+
+
+plot(varImp(modelLog))
+
+cv.10.folds <- createFolds(To, k = 10)
+lasso_grid <- expand.grid(fraction=c(1,0.1,0.01,0.001))
+
+lasso <- train ( medv ~ ., data = df, 
+               preProcess = c("center", "scale"), 
+               method ='lasso',
+               tuneGrid = lasso_grid,
+               trControl= trainControl( method = "cv", number = 10, index = cv.10.folds))  
+
+
+tuneGrid=expand.grid(alpha=1,lambda=seq(0, 100, by = 0.1))
+
+
+trainControl <- trainControl(method = "cv",
+                       number = 10,
+                       # Compute Recall, Precision, F-Measure
+                       summaryFunction = prSummary,
+                       # prSummary needs calculated class probs
+                       classProbs = T, savePredictions = T)
+
+modelFit <- train(as.factor(PFI_2_bucket) ~ . , data = TOP_20_2c, 
+            method = "glmnet", 
+            trControl = trainControl,
+            metric = "Recall",
+            family="binomial")
+
+confusionMatrix(modelFit)
+plot(modelFit)
+ROC(modelFit$pred[selectedIndices, ]$first, modelFit$pred[selectedIndices, ]$obs=="first")
+  
+```
+
+
+#Fitting SVM with radial kernel
+
+```{r}
+library(caret)
+ svm_Radial <- train(PFI_2_bucket ~., data = TOP_20_2c, method = "svmRadial",
+  trControl=trctrl,
+  preProcess = c("center", "scale"),
+  tuneLength = 10)
+
+
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+grid_radial <- expand.grid(sigma = c(0.025, 0.03, 0.037, 0.04,
+ 0.05, 0.06),
+ C = c(0.25, 0.5, 0.75, 1, 1.5, 2,5))
+
+set.seed(3233)
+svm_Radial_Grid <- train(PFI_2_bucket ~., data = TOP_20_2c, method = "svmRadial",
+                    trControl=control,
+                    preProcess = c("center", "scale"),
+                    tuneGrid = grid_radial,
+                    metric = 'Sens',
+                    tuneLength = 10)
+
+
+
+plot(svm_Radial_Grid)
+#ROC
+ROC(svm_Radial_Grid$pred[selectedIndices, ]$first, svm_Radial_Grid$pred[selectedIndices, ]$obs=="first")
+```
+
+```{r}
+library(caret)
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+grid_poly <- expand.grid(scale = c(0.001,0.0015,0.002,0.003,0.005),
+                           C = c(0.5,0.8,0.9,1,1.2,1.4,1.6,2,2.5), degree=1:6)
+
+svm_poly <- train(PFI_2_bucket ~.
+                    ,data = TOP_20_2c, method = "svmPoly",
+                    trControl=control,
+                    preProcess = c("center", "scale"),
+                    tuneGrid = grid_poly,
+                    metric =  'Sens',
+                    tuneLength = 10)
+
+svm_poly
+plot(svm_poly)
+confusionMatrix(svm_poly)
+write.csv(svm_poly$results, "svm_2_class.csv")
+#ROC
+ROC(svm_poly$pred[selectedIndices, ]$first, svm_poly$pred[selectedIndices, ]$obs=="first")
+```
+
+#RF fit
+```{r}
+library("plyr")
+library("ggplot2")
+library(caret)
+library(ggplot2)
+library(mlbench)
+library(plotROC)
+library(Epi)
+TOP_20_2c$PFI_2_bucket<-mapvalues(TOP_20_2c$PFI_2_bucket, from = c("1", "2"), to = c("first", "second"))
+TOP_20_2c$PFI_2_bucket<-NULL
+
+control <- trainControl(method = "repeatedcv",   # 10fold cross validation
+                     number = 5,							# do 5 repititions of cv
+                     summaryFunction=twoClassSummary,	# Use AUC to pick the best model
+                     classProbs=TRUE,
+                     allowParallel = TRUE, savePredictions=T)
+ 
+  
+  
+  tunegrid <- expand.grid(.mtry=1:5)
+  rf_fit <- train(as.factor(PFI_2_bucket) ~.,
+                     data = TOP_20_2c,
+                     method = 'rf',
+                     metric = 'Sens',
+                     tuneLength  = 15,
+                     tuneGrid = tunegrid,
+                     trControl = control, importance = TRUE)
+  
+residualValues.RF <- TOP_20_time$PFI.time.sqrt - rf_fit$pred$pred
+  plot(rf_fit$pred, residualValues.RF)
+plot(rf_fit$pred$pred, residualValues.RF, ylab = "Residual", xlab = "Predicted values")
+abline(h = 0, col = "darkgrey", lty = 2)
+plot(rf_fit)
+ROC(rf_fit$pred[selectedIndices, ]$first, rf_fit$pred[selectedIndices, ]$obs=="first")
+confusionMatrix(rf_fit)
+  
+  
+
+
+  rf_fit$pred$mtry==2
+  selectedIndices <- rf_fit$pred$mtry == 2
+  g <- ggplot(rf_fit$pred[selectedIndices, ]$pred, aes(m=second, d=factor(obs, levels = c("first", "second")))) + 
+  geom_roc(n.cuts=0) + 
+  coord_equal() +
+  style_roc()
+
+g + annotate("text", x=0.75, y=0.25, label=paste("AUC =", round((calc_auc(g))$AUC, 4)))
+  #print(rf_fit)
+  #plot(rf_fit)
+
+  ctrl = trainControl(method="repeatedcv", number=10, repeats = 300, savePredictions = TRUE, classProbs = TRUE)
+mdl = train("Label~.", data=Data, method = "glm", trControl = ctrl)
+pred = predict(mdl, newdata = Data, type="prob")
+roc.1 = roc(Data$Label, pred$control)
+roc.2 = roc(mdl$pred$obs,mdl$pred$control)
+roc.3 = roc(as.numeric(rf_fit$trainingData$.outcome=='case'),aggregate(case~rowIndex,mdl$pred,mean)[,'case'])
+```
+
+```{r}
+  
+  ##roc
+  
+  library(pROC)
+#probsTrain <- predict(tune, train, type = "prob")
+rocCurve   <- roc(response = (TOP_20_2c$PFI_2_bucket=="second")*1,
+                      predictor =rf_fit$pred[selectedIndices, ]$second,
+                      levels = rev(levels(TOP_20_2c$PFI_2_bucket))
+                  )
+plot(rocCurve, print.thres = "best")
+
+ibrary(pROC)
+probsTrain <- predict(tune, train, type = "prob")
+rocCurve   <- roc(response = train$response,
+                      predictor = probsTrain[, "yes"],
+                      levels = rev(levels(train$response)))
+plot(rocCurve, print.thres = "best")
+```
+
+
+
+#Fitting across 3 classes
+
+
+```{r}
+
+TOP_20_3c<-TOP_20[-c(1,3,27)]
+colnames(TOP_20_3c)
+#TOP_20_3c$dox_cyc <- pmax(TOP_20_3c$Doxorubicin,TOP_20_3c$Cyclophosphamide)
+# TOP_20_3c <- TOP_20_3c[,-c(12,13)]
+```
+
+
+#Fitting logistic regression
+
+
+```{r}
+# Fit the model
+library(nnet)
+model_log <- nnet::multinom(PFIbucket ~., data = TOP_20_3c)
+# Summarize the model
+summary(model_log)
+```
+
+#Fitting logistic with lasso
+
+```{r}
+library(knitr)
+library("classInt")
+X<- data.matrix(TOP_20_3c[-c(1,2)])
+Y<- data.matrix(TOP_20_3c[c(2)])
+glmmod <- glmnet(X, y=as.factor(Y), alpha=1, family="multinomial")
+plot(glmmod, xvar="lambda")
+cv.out=cv.glmnet(x=X,y=Y,alpha=1)
+plot(cv.out)
+
+(bestlam =cv.out$lambda.min)
+s="bestlam"
+#lasso.pred=predict(glmmod,s=bestlam,
+                   #newx=data.matrix(test_2c[-c(24)]), "class")
+lass.train=predict(glmmod, s=bestlam, newx=X, "class")
+print_glmnet_coefs <- function(cv.out, s="bestlam") {
+    ind <- which(coef(cv.out, s=s) != 0.0000)
+    df <- data.frame(
+        feature=rownames(coef(cv.out, s=s))[ind],
+        coeficient=coef(cv.out, s=s)[ind]
+    )
+    kable(df)
+}
+plot(cv.out$cvm)
+confusionMatrix(as.factor(Y), as.factor(lass.train))
+print_glmnet_coefs(cv.out,cv.out$lambda.min)
+```
+
+#Fitting SVM with radial kernel
+
+```{r}
+library(caret)
+
+ svm_Radial <- train(PFIbucket ~., data = TOP_20_3c, method = "svmRadial",
+  trControl=trctrl,
+  preProcess = c("center", "scale"),
+  tuneLength = 10)
+
+
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+grid_radial <- expand.grid(sigma = c(0.025, 0.03, 0.037, 0.04,
+ 0.05, 0.06),
+ C = c(0.25, 0.5, 0.75, 1, 1.5, 2,5))
+set.seed(3233)
+(svm_Radial_Grid <- train(PFIbucket ~., data = TOP_20_3c, method = "svmRadial",
+                    trControl=trctrl,
+                    preProcess = c("center", "scale"),
+                    tuneGrid = grid_radial,
+                    tuneLength = 10))
+
+confusionMatrix(svm_Radial_Grid)
+plot(svm_Radial_Grid)
+# Set up the 5-fold CV
+#fitControl <- caret::trainControl(method = "cv",number = 5)
+
+# Define ranges for the two parameters
+#C_range =     sapply(seq(-1,3,0.0125), function(x) 10^x)
+#sigma_range = sapply(seq(-3,1,0.0125), function(x) 10^x)
+
+# Create the grid of parameters
+#fitGrid <- expand.grid(C     = C_range,
+                       #sigma = sigma_range)
+
+# Set a random seed for reproducibility
+#set.seed(825)
+
+# Train the model using our previously defined parameters
+#Rsvm <- caret::train(PFIbucket ~ ., data = TOP_20_3c,
+                 #method = "svmRadial",
+                 #trControl = fitControl,
+                 #tuneGrid = fitGrid)
+
+#Rsvm
+#plot(Rsvm)
+```
+
+#FITTING SVM POLYNOMIAL
+
+```{r}
+library(caret)
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+grid_poly <- expand.grid(scale = c(0.001,0.0015,0.002,0.003,0.005),
+                           C = c(0.5,0.8,0.9,1,1.2,1.4,1.6,2,2.5), degree=1:8)
+
+svm_poly <- train(PFIbucket ~.
+                    ,data = TOP_20_3c, method = "svmPoly",
+                    trControl=trctrl,
+                    preProcess = c("center", "scale"),
+                    tuneGrid = grid_poly,
+                    tuneLength = 10)
+
+svm_poly
+confusionMatrix(svm_poly)
+plot(svm_poly)
+write.csv(svm_poly$results, "svm_3_class.csv")
+```
+
+#RF fit
+```{r}
+
+library(caret)
+control <- trainControl(method='repeatedcv', 
+                          number=10, 
+                          repeats=10,
+                          search = 'grid')
+  
+  
+  tunegrid <- expand.grid(.mtry=1:6)
+  rf_fit <- train(as.factor(PFIbucket) ~.,
+                     data = TOP_20_3c[,-which(colnames(TOP_20_3c_polr_sc) %in% ('Epirubicin'))],
+                     method = 'rf',
+                     metric = 'Accuracy',
+                     tuneLength  = 10,
+                     tuneGrid = tunegrid,
+                     trControl = control, importance = TRUE)
+  
+  #print(rf_fit)
+  #plot(rf_fit)
+  
+  
+  rf_fit
+  confusionMatrix(rf_fit)
+  plot(rf_fit)
+  varImp(rf_fit)
+  plot(varImp(rf_fit))
+  write.csv(varImp(rf_fit)$importance, "varimpt_rf.csv")
+```
+
+#Fitting a tree model to understand interactions
+
+```{r}
+library(rpart)
+library(rpart.plot)
+
+trmod <- rpart(as.factor(PFIbucket) ~., data = TOP_20_3c[,-which(colnames(TOP_20_3c) %in% ('Epirubicin'))])
+plotcp(trmod)
+printcp(trmod)
+
+prtrmod <- prune(trmod, cp = 0.014 )
+rpart.plot(prtrmod)
+
+
+table(TOP_20_3c$PFIbucket, predict(prtrmod,TOP_20_3c, type = 'class'))
+
+print(prtrmod)
+```
+
+
+```{r}
+trctrl <- trainControl(method = "repeatedcv", number = 8, repeats = 5)
+dtree_fit <- train(as.factor(PFIbucket) ~., data = TOP_20_3c[,-which(colnames(TOP_20_3c) %in% ('Epirubicin'))], method = "rpart",
+                   trControl=trctrl,tuneLength = 10)
+library(rpart.plot)
+rpart.plot(dtree_fit$finalModel, type=2, cex=0.5, space = 0.5, gap = 0.5,fallen.leaves=TRUE)
+#dtree_fit
+```
+
+
+# Fitting a logistic regression model with interaction terms:
+
+```{r}
+library(nnet)
+
+data_test <- TOP_20_3c
+data_test$dox_stg1 <- data_test$Doxorubicin*(as.numeric(data_test$ajcc_pathologic_tumor_stage.Stage.I)-1)
+
+int_mod <-multinom(as.factor(PFIbucket) ~ 
+                                Doxorubicin*ajcc_pathologic_tumor_stage.Stage.I*ENSG00000103269*ENSG00000102796
+                              + Doxorubicin*ENSG00000102796*cg02282892*ENSG00000100906
+                              + Doxorubicin*ENSG00000102796*cg05337753*ENSG00000198832
+                              + ENSG00000134917+
+                              + hsa.mir.146a+ajcc_pathologic_tumor_stage.Stage.3+Cyclophosphamide + Tamoxifen
+                              + Anastrozole+ Paclitaxel+ Docetaxel +Trastuzumab +Letrozole+  Fluorouracil+
+                              + Exemestane+ Carboplatin+ Methotrexate,
+         data = TOP_20_3c_polr_sc)
+#*ENSG00000103269*ENSG00000102796
+```
+
+```{r}
+coefficients(int_mod)
+
+
+```
+
+```{r}
+summary((int_mod))
+
+```
+
+Checking p-values of the coefficients:
+
+```{r}
+z <- summary(int_mod)$coefficients/summary(int_mod)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1))*2
+round(p,2)
+```
+
+```{r}
+library(MASS)
+
+TOP_20_3c_polr_sc <- data.frame(scale(TOP_20_3c[,-c(1,2,11)], center = TRUE, scale = TRUE))
+TOP_20_3c_polr_sc <- data.frame(cbind("PFIbucket"= TOP_20_3c$PFIbucket, 
+                           "Tumor_Stage.I"=TOP_20_3c$ajcc_pathologic_tumor_stage.Stage.I,
+                           "Tumor_Stage.3"=TOP_20_3c$ajcc_pathologic_tumor_stage.Stage.3,
+                           TOP_20_3c_polr_sc))
+
+polr_mod <- polr(PFIbucket ~ 
+                                Doxorubicin*Tumor_Stage.I*ENSG00000103269*ENSG00000102796
+                              + Doxorubicin*ENSG00000102796*cg02282892*ENSG00000100906
+                              + Doxorubicin*ENSG00000102796*cg05337753*ENSG00000198832
+                              + ENSG00000134917+ hsa.mir.146a+Tumor_Stage.3
+                              + Cyclophosphamide + Tamoxifen
+                              + Anastrozole+ Paclitaxel+ Docetaxel +Trastuzumab +Letrozole+  Fluorouracil+
+                              + Exemestane+ Carboplatin+ Methotrexate,
+         data = TOP_20_3c_polr_sc) 
+
+#summary(polr_mod)
+#library(AER) 
+coeftest(polr_mod) 
+```
+
+
+Reference for polr understanding: https://data.library.virginia.edu/fitting-and-interpreting-a-proportional-odds-model/
+Effects plots: https://cran.r-project.org/web/packages/sjPlot/vignettes/plot_interactions.html
+
+```{r}
+
+library(effects)
+(allEffects(polr_mod))
+
+```
+
+```{r}
+library(sjPlot)
+
+plot(Effect(focal.predictors = c("ajcc_pathologic_tumor_stage.Stage.I","Doxorubicin"), polr_mod), style="stacked")
+
+plot(Effect(focal.predictors = c("ENSG00000103269","Tumor_Stage.I","Anastrozole"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000103269","Tumor_Stage.I","Doxorubicin"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000103269","Tumor_Stage.I","Cyclophosphamide"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000103269","Tumor_Stage.I","Trastuzumab"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000103269","Tumor_Stage.I","Tamoxifen"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000103269","Tumor_Stage.I","Paclitaxel"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000103269","Tumor_Stage.I","Docetaxel"), polr_mod), style="stacked")
+
+plot(Effect(focal.predictors = c("ENSG00000103269","Anastrozole"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000103269","Doxorubicin"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000103269","Cyclophosphamide"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000103269","Trastuzumab"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000103269","Tamoxifen"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000103269","Paclitaxel"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000103269","Docetaxel"), polr_mod), style="stacked")
+
+plot(Effect(focal.predictors = c("ENSG00000102796","Anastrozole"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000100906","Doxorubicin"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","Cyclophosphamide"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","Trastuzumab"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","Tamoxifen"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","Paclitaxel"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","Docetaxel"), polr_mod), style="stacked")
+
+plot(Effect(focal.predictors = c("cg02282892","Anastrozole"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("cg02282892","Doxorubicin"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("cg02282892","Cyclophosphamide"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("cg02282892","Trastuzumab"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("cg02282892","Tamoxifen"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("cg02282892","Paclitaxel"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("cg02282892","Docetaxel"), polr_mod), style="stacked")
+
+
+plot(Effect(focal.predictors = c("ENSG00000102796","cg02282892","Anastrozole"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","ENSG00000198832","cg05337753"), polr_mod,xlevels=3), style="stacked")
+plot(Effect(focal.predictors = c("Tumor_Stage.I","ENSG00000103269","ENSG00000102796"),polr_mod,xlevels=3), style="stacked")
+
+plot(Effect(focal.predictors = c("ENSG00000102796","cg02282892","Doxorubicin"), polr_mod,xlevels=3), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","cg02282892","Trastuzumab"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","cg02282892","Tamoxifen"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","cg02282892","Paclitaxel"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","cg02282892","Docetaxel"), polr_mod), style="stacked")
+
+plot(Effect(focal.predictors = c("ENSG00000102796","cg05337753","Anastrozole"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","cg05337753","Doxorubicin"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","cg05337753","Cyclophosphamide"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","cg05337753","Trastuzumab"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","cg05337753","Tamoxifen"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","cg05337753","Paclitaxel"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000102796","cg05337753","Docetaxel"), polr_mod), style="stacked")
+
+
+
+plot(Effect(focal.predictors = c("ENSG00000103269","cg02282892","Anastrozole"), polr_mod,xlevels=4), style="stacked")
+
+plot(Effect(focal.predictors = c("ENSG00000103269","cg05337753","Cyclophosphamide"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("ENSG00000103269","cg05337753","Doxorubicin"), polr_mod), style="stacked")
+
+
+plot(Effect(focal.predictors = c("ENSG00000103269","ajcc_pathologic_tumor_stage.Stage.3","Doxorubicin"), polr_mod), style="stacked")
+
+plot(Effect(focal.predictors = c("ENSG00000103269","cg02282892"), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c("cg05337753"), polr_mod), style="stacked")
+
+plot(Effect(focal.predictors = c("ENSG00000102796","ajcc_pathologic_tumor_stage.Stage.3","Doxorubicin"), polr_mod), style="stacked")
+
+plot(Effect(focal.predictors = c('cg02282892','Doxorubicin','ajcc_pathologic_tumor_stage.Stage.I'), polr_mod), style="stacked")
+
+plot(Effect(focal.predictors = c('cg05337753','ENSG00000103269','Doxorubicin'), polr_mod), style="stacked")
+plot(Effect(focal.predictors = c('Doxorubicin','cg05337753','cg02282892'), polr_mod), style="stacked",
+     xlevels = list(cg02282892=3, cg05337753=3, ENSG00000102796=3))
+    
+plot(Effect(focal.predictors = c("ENSG00000103269","ENSG00000102796","Doxorubicin"), polr_mod), style="stacked")
+
+plot_model(polr_mod, type = "pred", terms = c("ENSG00000102796","Doxorubicin"))
+plot_model(polr_mod, type = "pred", terms = c("ENSG00000103269","ajcc_pathologic_tumor_stage.Stage.I"))
+plot_model(polr_mod, type = "pred", terms = c("ENSG00000103269","ENSG00000102796"))
+plot_model(polr_mod, type = "pred", terms = c('hsa.mir.146a','Doxorubicin'))
+plot_model(polr_mod, type = "pred", terms = c('ENSG00000102796','cg05337753'))
+
+
+#  Doxorubicin*ajcc_pathologic_tumor_stage.Stage.I*ENSG00000103269*ENSG00000102796
+                              + Doxorubicin*ENSG00000102796*cg02282892*ENSG00000100906
+                              + Doxorubicin*ENSG00000102796*cg05337753*ENSG00000198832
+                              + ENSG00000134917+
+                              + hsa.mir.146a+ajcc_pathologic_tumor_stage.Stage.3+Cyclophosphamide + Tamoxifen
+                              + Anastrozole+ Paclitaxel+ Docetaxel +Trastuzumab +Letrozole+  Fluorouracil+
+                              + Exemestane+ Carboplatin+ Methotrexate
+
+```
+
+```{r}
+summary(TOP_20_3c)
+```
+
+```{r}
+library(broom)
+
+clm_mod <- clm(as.factor(PFIbucket) ~ Doxorubicin*ajcc_pathologic_tumor_stage.Stage.I*ENSG00000103269*ENSG00000102796
+                              + Doxorubicin*ENSG00000102796*cg02282892*ENSG00000100906
+                              + Doxorubicin*ENSG00000102796*cg05337753*ENSG00000198832
+                              + ENSG00000134917+
+                              + hsa.mir.146a+ajcc_pathologic_tumor_stage.Stage.3+Cyclophosphamide + Tamoxifen
+                              + Anastrozole+ Paclitaxel+ Docetaxel +Trastuzumab +Letrozole+  Fluorouracil+
+                              + Exemestane+ Carboplatin+ Methotrexate,
+         data = TOP_20_3c_polr_sc)
+  tidy(clm_mod)
+  tidy(clm_mod, conf.int = TRUE)
+  write.csv(tidy(clm_mod, conf.int = TRUE, conf.type = "Wald", exponentiate = TRUE),'polr_results.csv')
+
+  #Epirubicin+ 
+```
+
+
+
+```{r}
+
+confusionMatrix(TOP_20_3c$PFIbucket,predict(int_mod, data = TOP_20_3c, type = 'class'))
+
+```
+
+
+
+
+#Read PC components
+
+```{r}
+omics_train<-read.csv("/Users/samiaferoze/Downloads/omics_pcs_train.csv")
+omics_test<-read.csv("/Users/samiaferoze/Downloads/omics_pcs_test.csv")
+head(omics_test)
+colnames(omics_train)[1]<-"X"
+colnames(omics_test)[1]<-"X"
+omics_set<-rbind(omics_train, omics_test)
+colnames(omics_set_train_v1)[1]<-'X'
+omics_set_train<-merge(var20,omics_train)
+omics_set_test<-merge(var20,omics_test)
+omics_set_train_v1<-omics_set_train[c(1:15,18,23,24,25,26,32:41)]
+omics_set_test_v1<-omics_set_test[c(1:15,18,23,24,25,26,32:41)]
+```
+
+#Principal components with 3 class
+```{r}
+TOP_20_3c<-TOP_20[-c(3,27)]
+colnames(TOP_20_3c)
+pc_3class<-merge(omics_train, TOP_20_3c, by= "X")
+colnames(pc_3class)
+pc_3<-pc_3class[c(2:11,272:285,287,288,297)]
+
+control <- trainControl(method='repeatedcv', 
+                          number=15, 
+                          repeats=10,
+                          search = 'grid')
+  
+  
+  tunegrid <- expand.grid(.mtry=1:5)
+  rf_fit <- train(as.factor(PFIbucket) ~.,
+                     data = pc_3,
+                     method = 'rf',
+                     metric = 'Accuracy',
+                     tuneLength  = 15,
+                     tuneGrid = tunegrid,
+                     trControl = control, importance = TRUE)
+  
+  #print(rf_fit)
+  #plot(rf_fit)
+  
+  
+  rf_fit
+  confusionMatrix(rf_fit)
+  plot(rf_fit)
+
+```
+
+
+#Principal components with 2 class 
+```{r}
+TOP_20_2pc<-TOP_20[-c(2,3,5:12)]
+colnames(PC_2C)
+PC_2C<-merge(omics_train,TOP_20_2pc, by = "X")
+PC_2C<-PC_2C[c(2:11,272:285,287,288,302)]
+control <- trainControl(method='repeatedcv', 
+                          number=15, 
+                          repeats=10,
+                          search = 'grid')
+  
+  
+  tunegrid <- expand.grid(.mtry=1:5)
+  rf_fit <- train(as.factor(PFI_2_bucket) ~.,
+                     data = PC_2C,
+                     method = 'rf',
+                     tuneLength  = 15,
+                     tuneGrid = tunegrid,
+                     trControl = control, importance = TRUE)
+  
+  #print(rf_fit)
+  #plot(rf_fit)
+  
+  
+  rf_fit
+confusionMatrix(rf_fit)
+  plot(rf_fit)
+```
+
+
+#Principal components with PFI time sqrt
+
+
+```{r}
+pc_time<-merge(omics_train, TOP_20_time[-c(2)], by = "X")
+
+colnames(pc_time)
+
+pc_time_sel<-pc_time[c(2:11,272:285,287,296,310)]
+
+control <- trainControl(method='repeatedcv', 
+                          number=15, 
+                          repeats=10,
+                          search = 'grid')
+  
+  
+  tunegrid <- expand.grid(.mtry=1:5)
+  rf_fit <- train(PFI.time.sqrt ~.,
+                     data = pc_time_sel,
+                     method = 'rf',
+                     tuneLength  = 15,
+                     tuneGrid = tunegrid,
+                     trControl = control, importance = TRUE)
+  
+  #print(rf_fit)
+  #plot(rf_fit)
+  
+  
+  rf_fit
+  confusionMatrix(rf_fit)
+  plot(rf_fit)
+```
+

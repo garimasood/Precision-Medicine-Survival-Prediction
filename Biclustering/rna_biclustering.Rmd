@@ -1,0 +1,114 @@
+---
+title: "rnarmd"
+author: "Garima Sood"
+date: "June 23, 2018"
+output: html_document
+---
+```{r}
+#source("https://bioconductor.org/biocLite.R")
+#biocLite("edgeR")
+
+library(RColorBrewer)
+#library(genefilter)
+library(edgeR)
+library(ggplot2)
+library(knitr)
+library(limma)
+library(cvxbiclustr)
+```
+
+```{r setup, include=FALSE}
+
+rna <- read.csv("C:/Users/garim/Documents/Capstone/Full data/Normalized/RNA/rna_norm_log_counts_brca.csv")
+```
+
+```{r}
+head(rna)
+```
+
+```{r}
+rownames(rna) = rna[,1]
+rna = rna[,2:ncol(rna)]
+rna_mat <- data.matrix(rna)
+```
+
+
+
+
+```{r}
+vargene <- apply(rna_mat, 1, function(x) var(x))
+
+```
+
+```{r}
+
+max(vargene)
+min(vargene)
+length(vargene)
+plot(cumsum(sort(vargene, decreasing = TRUE))/sum(vargene), type = "l")
+```
+
+```{r}
+names(head(vargene))
+rna_snip = as.matrix(rna[c(names(sort(vargene, decreasing = TRUE))[1:5000]),])
+dim(rna_snip)
+```
+```{r}
+rna_snip <- rna_snip - mean(rna_snip)
+rna_snip <- rna_snip/norm(rna_snip)
+```
+
+```{r}
+## Create annotation for heatmap
+
+types <- colnames(rna)
+ty <- as.numeric(factor(types))
+cols <- rainbow(4)
+YlGnBu5 <- c('#ffffd9','#c7e9b4','#41b6c4','#225ea8','#081d58')
+hmcols <- colorRampPalette(YlGnBu5)(256)
+
+```
+
+
+```{r}
+## Construct weights and edge-incidence matrices
+phi <- 0.5; k <- 10
+wts <- gkn_weights(as.matrix(rna_snip),phi=phi,k_row=k,k_col=k)
+w_row <- wts$w_row
+w_col <- wts$w_col
+E_row <- wts$E_row
+E_col <- wts$E_col
+
+```
+
+```{r}
+## Connected Components of Row and Column Graphs
+wts$nRowComp
+wts$nColComp
+
+#### Initialize path parameters and structures
+
+gammaSeq <- c(1,100,500, 1000, 10000, 50000)
+## Generate solution path
+sol <- cobra_validate(as.matrix(rna_snip),E_row,E_col,w_row,w_col,gammaSeq)
+verr <- sol$validation_error
+ix <- which.min(verr)
+heatmap(sol$U[[ix]],col=hmcols,labRow=NA,labCol=NA,ColSideCol=cols[ty])
+rbind(verr, gammaSeq)
+```
+
+```{r}
+## Connected Components of Row and Column Graphs
+wts$nRowComp
+wts$nColComp
+
+#### Initialize path parameters and structures
+
+gammaSeq <- c(50,70, 100,120, 140)
+## Generate solution path
+sol <- cobra_validate(as.matrix(rna_snip),E_row,E_col,w_row,w_col,gammaSeq)
+verr <- sol$validation_error
+ix <- which.min(verr)
+heatmap(sol$U[[ix]],col=hmcols,labRow=NA,labCol=NA,ColSideCol=cols[ty])
+rbind(verr, gammaSeq)
+```
