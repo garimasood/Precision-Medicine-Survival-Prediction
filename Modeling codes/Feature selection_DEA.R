@@ -1,3 +1,4 @@
+# Note: This code has been taken form an existing research on effective methods of selecting relevant genes for a particular cancer type
 
 assignInNamespace("version_info", c(devtools:::version_info, list("3.5" = list(version_min = "3.3.0", version_max = "99.99.99", path = "bin"))), "devtools")
 find_rtools() # is TRUE now

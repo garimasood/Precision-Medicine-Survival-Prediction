@@ -1,10 +1,3 @@
----
-title: "Report_implementation"
-author: "Samia Feroze"
-date: "10/4/2018"
-output: html_document
----
-
 #Running regression with PFI time
 
 ```{r}
